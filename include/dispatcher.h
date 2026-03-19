@@ -1,14 +1,15 @@
 #pragma once
 
+#include "cost_model.h"
 #include "profiler.h"
 #include "strategies.h"
+
+#include <cstddef>
 
 namespace pase {
 
 /**
- * Dispatcher: routes to optimal strategy based on Profile.
- * Phase 1: rule-based (no cost model).
- * Phase 2+: cost-model-driven.
+ * Dispatcher: routes using fast heuristics + cost model (Phase 2).
  */
 class Dispatcher {
  public:
@@ -23,7 +24,14 @@ class Dispatcher {
 
   explicit Dispatcher(const Thresholds& thr = Thresholds());
 
-  Strategy select_strategy(const Profile& p) const;
+  const Thresholds& thresholds() const { return thresholds_; }
+
+  /**
+   * Phase 2: INSERTION fast-path, then GPU vs best CPU (margin), else best CPU.
+   * element_size is sizeof(T) for PCIe byte model.
+   */
+  Strategy select_strategy(const Profile& p, const CostModel& cm,
+                          std::size_t element_size) const;
 
  private:
   Thresholds thresholds_;

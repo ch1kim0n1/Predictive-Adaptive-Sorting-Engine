@@ -21,10 +21,6 @@ struct SortLog {
   bool prediction_correct;
 };
 
-/**
- * FeedbackLogger: writes SortLog to CSV after each sort.
- * Phase 2: logging only. Phase 3: EMA tuner.
- */
 class FeedbackLogger {
  public:
   void log(const SortLog& entry);
@@ -34,5 +30,11 @@ class FeedbackLogger {
  private:
   bool enabled_ = false;
 };
+
+/** Logger used by adaptive_sort when PASE_FEEDBACK=1 or set_feedback_logging(true). */
+FeedbackLogger& global_feedback_logger();
+
+void set_feedback_logging(bool enabled);
+bool feedback_logging_enabled();
 
 }  // namespace pase

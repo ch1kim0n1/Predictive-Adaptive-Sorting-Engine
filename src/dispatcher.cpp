@@ -4,17 +4,24 @@ namespace pase {
 
 Dispatcher::Dispatcher(const Thresholds& thr) : thresholds_(thr) {}
 
-Strategy Dispatcher::select_strategy(const Profile& p) const {
+Strategy Dispatcher::select_strategy(const Profile& p, const CostModel& cm,
+                                    std::size_t element_size) const {
   if (p.sortedness > thresholds_.sorted) {
     return Strategy::INSERTION_OPT;
   }
-  if (p.avg_run_length > thresholds_.run_merge) {
-    return Strategy::RUN_MERGE_OPT;
+
+  Strategy best_cpu =
+      cm.best_cpu_strategy(p, thresholds_.sorted, thresholds_.run_merge,
+                          thresholds_.dup);
+  double cpu_ms = cm.estimate_cpu(p, best_cpu);
+  double gpu_ms = cm.estimate_gpu(p.n, p.entropy, element_size);
+
+  if (p.n >= thresholds_.min_gpu &&
+      gpu_ms < cpu_ms * CostModel::kGpuMargin) {
+    return Strategy::GPU_SORT;
   }
-  if (p.duplicate_ratio > thresholds_.dup) {
-    return Strategy::THREE_WAY_QS;
-  }
-  return Strategy::INTROSORT;
+
+  return best_cpu;
 }
 
 }  // namespace pase

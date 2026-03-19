@@ -7,7 +7,8 @@ PASE is a systems-level sorting framework that combines runtime data profiling, 
 ## Status
 
 - **Phase 0**: Project setup ✓
-- **Phase 1**: Profiler + Dispatcher ✓
+- **Phase 1**: Profiler + rule-based dispatcher ✓
+- **Phase 2**: Cost model + RUN_MERGE / 3-way QS + feedback CSV ✓
 
 ## Building
 
@@ -27,7 +28,7 @@ make
 
 ```bash
 cd build
-ctest -R "Correctness|Profiler"
+ctest -R "Correctness|Profiler|CostModel"
 ```
 
 Or run all tests:
@@ -46,6 +47,13 @@ To export results to CSV:
 ```bash
 ./bench/bench_main --benchmark_out=results.csv --benchmark_out_format=csv
 ```
+
+## Feedback log (Phase 2)
+
+Sort decisions and timings are appended to `~/.pase/sort_log.csv` when either:
+
+- Environment variable `PASE_FEEDBACK=1`, or
+- `pase::set_feedback_logging(true)` (see `feedback.h`)
 
 ## License
 
