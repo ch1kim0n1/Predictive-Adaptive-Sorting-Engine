@@ -4,13 +4,16 @@
 #include "cpu_algorithms.h"
 #include "dispatcher.h"
 #include "feedback.h"
+#include "gpu_api.h"
 #include "pase.h"
 #include "profiler.h"
+#include "threshold_tuner.h"
 
 #include <chrono>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <type_traits>
 
 namespace pase {
 
@@ -61,7 +64,13 @@ void print_verbose(const Profile& p, Strategy s, double pred_gpu_ms,
       std::cout << "INTROSORT      (fallback)\n";
       break;
     case Strategy::GPU_SORT:
-      std::cout << "GPU_SORT       (cost model; CPU path until Phase 3)\n";
+#ifdef PASE_WITH_CUDA
+      std::cout << "GPU_SORT       (CUDA bitonic path)"
+                << (gpu_sort_int_available() ? "" : " [fallback: no device]")
+                << "\n";
+#else
+      std::cout << "GPU_SORT       (build without CUDA → std::sort)\n";
+#endif
       break;
   }
 }
@@ -79,9 +88,18 @@ void execute_strategy(T* array, int n, Strategy s, const Comp& comp) {
       cpu::quicksort_3way(array, n, comp);
       break;
     case Strategy::INTROSORT:
-    case Strategy::GPU_SORT:
       cpu::introsort(array, n, comp);
       break;
+    case Strategy::GPU_SORT: {
+      if constexpr (std::is_same_v<T, int> &&
+                    std::is_same_v<Comp, std::less<int>>) {
+        if (gpu_sort_int(array, n)) {
+          break;
+        }
+      }
+      cpu::introsort(array, n, comp);
+      break;
+    }
   }
 }
 
@@ -100,12 +118,21 @@ void adaptive_sort(T* array, int n, const Comp& comp, bool verbose) {
   Profiler profiler(0.015f);
   Profile p = profiler.analyze(array, n, comp);
 
+  const bool gpu_ok = [] {
+#ifdef PASE_WITH_CUDA
+    return gpu_sort_int_available();
+#else
+    return false;
+#endif
+  }();
+
   Dispatcher dispatcher;
+  const double win = global_threshold_tuner().gpu_win_factor();
   Strategy best_cpu =
       cm.best_cpu_strategy(p, dispatcher.thresholds().sorted,
                           dispatcher.thresholds().run_merge,
                           dispatcher.thresholds().dup);
-  Strategy s = dispatcher.select_strategy(p, cm, sizeof(T));
+  Strategy s = dispatcher.select_strategy(p, cm, sizeof(T), gpu_ok, win);
 
   const double pred_gpu = cm.estimate_gpu(p.n, p.entropy, sizeof(T));
   double pred_cpu_for_log = cm.estimate_cpu(p, s);
@@ -122,6 +149,8 @@ void adaptive_sort(T* array, int n, const Comp& comp, bool verbose) {
   auto t1 = std::chrono::steady_clock::now();
   double actual_ms =
       std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+  global_threshold_tuner().observe_gpu_decision(pred_gpu, actual_ms, s);
 
   FeedbackLogger& fl = global_feedback_logger();
   if (fl.enabled()) {

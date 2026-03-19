@@ -27,11 +27,12 @@ class Dispatcher {
   const Thresholds& thresholds() const { return thresholds_; }
 
   /**
-   * Phase 2: INSERTION fast-path, then GPU vs best CPU (margin), else best CPU.
-   * element_size is sizeof(T) for PCIe byte model.
+   * INSERTION fast-path, then GPU vs best CPU if gpu_available, else best CPU.
+   * gpu_win_factor: GPU wins if gpu_est < cpu_est * factor (default ~0.85).
    */
   Strategy select_strategy(const Profile& p, const CostModel& cm,
-                          std::size_t element_size) const;
+                          std::size_t element_size, bool gpu_available,
+                          double gpu_win_factor) const;
 
  private:
   Thresholds thresholds_;

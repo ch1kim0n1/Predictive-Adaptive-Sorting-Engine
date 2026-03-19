@@ -12,6 +12,11 @@ add_executable(test_cost_model test_cost_model.cpp)
 target_link_libraries(test_cost_model pase GTest::gtest_main)
 add_test(NAME CostModel COMMAND test_cost_model)
 
+add_executable(test_gpu test_gpu.cpp)
+target_link_libraries(test_gpu pase GTest::gtest_main)
+add_test(NAME GpuSort COMMAND test_gpu)
+
 target_include_directories(test_correctness PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_include_directories(test_profiler PRIVATE ${CMAKE_SOURCE_DIR}/include)
 target_include_directories(test_cost_model PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(test_gpu PRIVATE ${CMAKE_SOURCE_DIR}/include)

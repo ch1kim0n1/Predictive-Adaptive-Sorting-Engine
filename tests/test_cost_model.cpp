@@ -30,7 +30,9 @@ TEST(CostModelTest, DispatcherUsesInsertionWhenVerySorted) {
   p.entropy = 0.1f;
   p.avg_run_length = 200;
   p.max_run_length = 500;
-  EXPECT_EQ(d.select_strategy(p, cm, sizeof(int)), Strategy::INSERTION_OPT);
+  EXPECT_EQ(d.select_strategy(p, cm, sizeof(int), /*gpu_available=*/true,
+                              /*gpu_win_factor=*/0.85),
+            Strategy::INSERTION_OPT);
 }
 
 TEST(CostModelTest, BestCpuStrategyPicksThreeWayOnDuplicates) {

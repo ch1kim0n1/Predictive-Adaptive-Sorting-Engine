@@ -1,5 +1,7 @@
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.17)
 project(PASE VERSION 1.0.0 LANGUAGES CXX)
+
+option(PASE_ENABLE_CUDA "Build with NVIDIA CUDA GPU sort" OFF)
 
 enable_testing()
 

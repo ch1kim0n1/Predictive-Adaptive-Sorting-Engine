@@ -36,9 +36,6 @@ class CostModel {
   /** One-time calibration using std::sort(random int[N]). */
   static void calibrate_with_int_sort(CostModel& out);
 
-  /// Default margin: GPU must beat CPU by this factor to win.
-  static constexpr double kGpuMargin = 0.85;
-
  private:
   double cpu_ops_per_ms_;
   static constexpr double kPcieGbPerS = 12.0;
