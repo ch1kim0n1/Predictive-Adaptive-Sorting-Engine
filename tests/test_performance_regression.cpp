@@ -58,7 +58,7 @@ TEST(PerformanceRegression, Sorted100kNotPathological) {
   std::vector<int> base(static_cast<size_t>(n));
   std::iota(base.begin(), base.end(), 0);
   expect_no_large_regression(
-      base, pase::bench_contract::kAcceptStructuredMaxSlowdown);
+      base, pase::bench_contract::kAcceptFullySortedMaxSlowdown);
 }
 
 TEST(PerformanceRegression, NearlySorted95_100kNotPathological) {

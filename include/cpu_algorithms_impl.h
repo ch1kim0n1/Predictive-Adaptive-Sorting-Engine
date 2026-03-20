@@ -1,9 +1,12 @@
 #pragma once
 
 #include "cpu_algorithms.h"
+#include "introsort_dispatch.h"
 
 #include <algorithm>
 #include <cstring>
+#include <functional>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -108,7 +111,12 @@ void insertion_sort(T* array, int n, const Comp& comp) {
 
 template <typename T, typename Comp>
 void introsort(T* array, int n, const Comp& comp) {
-  std::sort(array, array + n, comp);
+  if constexpr (std::is_same_v<T, int> &&
+                std::is_same_v<Comp, std::less<int>>) {
+    pase_cpu_introsort_int_dispatch(array, n);
+  } else {
+    std::sort(array, array + n, comp);
+  }
 }
 
 template <typename T, typename Comp>

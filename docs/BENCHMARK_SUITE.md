@@ -1,6 +1,6 @@
-# PASE benchmark suite contract (v1.1)
+# PASE benchmark suite contract (v1.2)
 
-Identifier: **`PASE_BENCH_SUITE_VERSION`** = `"1.1"` (see `include/pase_bench_contract.h`).
+Identifier: **`PASE_BENCH_SUITE_VERSION`** = `"1.2"` (see `include/pase_bench_contract.h`).
 
 ## Workloads
 
@@ -37,14 +37,17 @@ Derived columns: `speedup_vs_std`, `speedup_vs_stable`.
 
 ## CSV
 
-- Optional first line: `# pase_bench_suite=1.1` (version marker).
+- Optional first line: `# pase_bench_suite=1.2` (version marker).
 - Schema is stable within a major suite version; bump version if columns change.
 
 ## Acceptance (reference; tune in CI)
 
-See `pase::bench_contract` in `include/pase_bench_contract.h`:
+See `pase::bench_contract` in `include/pase_bench_contract.h` and `tests/test_performance_regression.cpp`:
 
-- **Structured** workloads (sorted / nearly sorted): PASE median wall time should not exceed **`kAcceptStructuredMaxSlowdown` ×** `std::sort` median in `PerformanceRegression` tests.
-- **Random / general**: looser **`kAcceptRandomMaxSlowdown`** for optional extended smoke (not all scenarios need to “win”).
+| Constant | Use |
+|----------|-----|
+| **`kAcceptFullySortedMaxSlowdown`** | Fully sorted **100k** `int`: PASE median vs `std::sort` (profiler + dispatch can dominate very fast libc sorts on some hosts). |
+| **`kAcceptStructuredMaxSlowdown`** | **Nearly sorted (95%)** @ 100k: PASE median vs `std::sort`. |
+| **`kAcceptRandomMaxSlowdown`** | **Random** smoke (50k): looser bound; not every scenario must “win”. |
 
 Document machine model, OS, `CMAKE_BUILD_TYPE`, and `PASE_ENABLE_CUDA` when publishing numbers.

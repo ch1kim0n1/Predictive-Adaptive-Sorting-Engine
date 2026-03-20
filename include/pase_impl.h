@@ -9,6 +9,7 @@
 #include "threshold_tuner.h"
 
 #include <chrono>
+#include <complex>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -89,6 +90,30 @@ void execute_strategy(T* array, int n, Strategy s, const Comp& comp) {
           break;
         }
       }
+      if constexpr (std::is_same_v<T, float> &&
+                    std::is_same_v<Comp, std::less<float>>) {
+        if (gpu_sort_float(array, n)) {
+          break;
+        }
+      }
+      if constexpr (std::is_same_v<T, double> &&
+                    std::is_same_v<Comp, std::less<double>>) {
+        if (gpu_sort_double(array, n)) {
+          break;
+        }
+      }
+      if constexpr (std::is_same_v<T, std::complex<float>> &&
+                    std::is_same_v<Comp, LexicographicComplexLess<float>>) {
+        if (gpu_sort_complex_float(array, n)) {
+          break;
+        }
+      }
+      if constexpr (std::is_same_v<T, std::complex<double>> &&
+                    std::is_same_v<Comp, LexicographicComplexLess<double>>) {
+        if (gpu_sort_complex_double(array, n)) {
+          break;
+        }
+      }
       cpu::introsort(array, n, comp);
       break;
     }
@@ -113,7 +138,7 @@ void adaptive_sort(T* array, int n, const Comp& comp, bool verbose) {
 
   const bool gpu_ok = [] {
 #ifdef PASE_WITH_CUDA
-    return gpu_sort_int_available();
+    return gpu_sort_device_available();
 #else
     return false;
 #endif

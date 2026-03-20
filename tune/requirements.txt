@@ -1,1 +1,4 @@
 matplotlib>=3.7
+# Optional Phase 5 ML training (train_ml_model.py)
+scikit-learn>=1.3
+pandas>=2.0

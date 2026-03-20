@@ -6,7 +6,10 @@
 #include <cmath>
 #include <cstring>
 #include <functional>
+#include <type_traits>
 #include <vector>
+
+#include "simd_profiler.h"
 
 namespace pase {
 namespace profiler_detail {
@@ -117,31 +120,37 @@ Profile Profiler::analyze(const T* array, int n, const Comp& comp) {
   int run_sum = 0;
   int run_count = 0;
   int max_run = 1;
-  int current_run = 1;
 
-  for (size_t i = 1; i < samples.size(); ++i) {
-    const T& prev = samples[i - 1];
-    const T& curr = samples[i];
+  if constexpr (std::is_same_v<T, int> &&
+                std::is_same_v<Comp, std::less<int>>) {
+    simd_profiler::int_sample_metrics(samples, in_order, duplicates, total_pairs,
+                                      run_sum, run_count, max_run);
+  } else {
+    int current_run = 1;
+    for (size_t i = 1; i < samples.size(); ++i) {
+      const T& prev = samples[i - 1];
+      const T& curr = samples[i];
 
-    if (comp(prev, curr)) {
-      in_order++;
-    } else if (!comp(curr, prev)) {
-      duplicates++;
+      if (comp(prev, curr)) {
+        in_order++;
+      } else if (!comp(curr, prev)) {
+        duplicates++;
+      }
+      total_pairs++;
+
+      if (comp(prev, curr) || (!comp(curr, prev) && !comp(prev, curr))) {
+        current_run++;
+      } else {
+        run_sum += current_run;
+        run_count++;
+        max_run = std::max(max_run, current_run);
+        current_run = 1;
+      }
     }
-    total_pairs++;
-
-    if (comp(prev, curr) || (!comp(curr, prev) && !comp(prev, curr))) {
-      current_run++;
-    } else {
-      run_sum += current_run;
-      run_count++;
-      max_run = std::max(max_run, current_run);
-      current_run = 1;
-    }
+    run_sum += current_run;
+    run_count++;
+    max_run = std::max(max_run, current_run);
   }
-  run_sum += current_run;
-  run_count++;
-  max_run = std::max(max_run, current_run);
 
   p.sortedness =
       total_pairs > 0 ? static_cast<float>(in_order) / total_pairs : 1.0f;

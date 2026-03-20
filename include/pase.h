@@ -3,6 +3,7 @@
 #include <functional>
 #include <vector>
 
+#include "lex_complex_order.h"
 #include "profiler.h"
 #include "strategies.h"
 

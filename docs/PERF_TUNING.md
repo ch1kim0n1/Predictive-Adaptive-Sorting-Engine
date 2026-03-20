@@ -4,8 +4,11 @@
 
 - Suite id **`PASE_BENCH_SUITE_VERSION`** and workload list: see
   [BENCHMARK_SUITE.md](BENCHMARK_SUITE.md) and `include/pase_bench_contract.h`.
-- Regression tests use **`pase::bench_contract::kAcceptStructuredMaxSlowdown`** /
-  **`kAcceptRandomMaxSlowdown`** vs `std::sort` (median wall time).
+- Regression tests (`tests/test_performance_regression.cpp`) compare PASE median
+  wall time vs `std::sort` using:
+  - **`kAcceptFullySortedMaxSlowdown`** — fully sorted **100k** `int`
+  - **`kAcceptStructuredMaxSlowdown`** — **nearly sorted (95%)** @ 100k
+  - **`kAcceptRandomMaxSlowdown`** — random **50k** smoke
 - CSV exports from `bench_results` start with `# pase_bench_suite=…`; Python
   tooling strips comment lines automatically.
 
@@ -65,7 +68,8 @@ term only (PCIe transfer model unchanged).
 
 ## 4. GPU path (CUDA builds)
 
-- **Default**: **Thrust** `thrust::sort` on device.
+- **Default**: **Thrust** `thrust::sort` on device for `int`, `float`, `double`, and
+  lexicographic **complex** (`gpu_sort_complex_*`: pack to `(re, im)` POD, sort, unpack).
 - **Optional** (`-DPASE_GPU_SORT_USE_CUB=ON`): **CUB** `DeviceRadixSort` on
   XOR-mapped `int` keys (same `gpu_sort_int` API).
 

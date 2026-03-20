@@ -1,6 +1,7 @@
 #include "runtime.h"
 
 #include "config_loader.h"
+#include "ml_tuner.h"
 #include "threshold_tuner.h"
 
 #include <mutex>
@@ -22,6 +23,7 @@ LoadedPaseConfig& loaded_pase_config() {
     cfg.gpu_win = global_threshold_tuner().gpu_win_factor();
     load_pase_config_file(default_pase_config_path(), cfg.th, cfg.gpu_win,
                          &cfg.fit);
+    ml_tuning::apply_ml_threshold_file(cfg.th);
     global_threshold_tuner().set_gpu_win_factor(cfg.gpu_win);
   });
   return cfg;

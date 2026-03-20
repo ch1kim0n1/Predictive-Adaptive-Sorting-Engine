@@ -33,7 +33,7 @@ PASE is a **production-grade sorting library** that replaces a single generic so
 
 | Workload | vs `std::sort` | Notes |
 |----------|----------------|----|
-| **Fully random** | 0.9–1.0× (or ≤ 1.1× on CI tests) | Profiler + dispatch overhead ~3% on 100k elements; picks introsort/fallback. Regression tests bound to **≤1.65× on structured, ≤2× on random smoke**. |
+| **Fully random** | 0.9–1.0× (or ≤ 1.1× on CI tests) | Profiler + dispatch overhead ~3% on 100k elements; picks introsort/fallback. Regression tests: **fully sorted 100k** ≤ **`kAcceptFullySortedMaxSlowdown`×** `std::sort`; **nearly sorted (95%)** ≤ **1.65×**; **random 50k** ≤ **2×** (see `include/pase_bench_contract.h`). |
 | **Mixed / clustered** | 0.95–1.05× | Cost model tuned conservatively; falls back to introsort if uncertain. |
 | **Small arrays (n < 3,072)** | 1.0× (same as `std::sort`) | Below this, profiling cost > benefit; bypasses dispatch entirely. |
 
@@ -75,7 +75,7 @@ Input Array
 
 ## Benchmarks & Evaluation
 
-### Suite v1.1: Versioned Workloads
+### Suite v1.2: Versioned Workloads
 
 **8 dataset types** × **default size grid** (10k, 100k, 500k elements) → CSV with mean ± stdev for PASE, `std::sort`, `std::stable_sort`.
 
@@ -90,11 +90,12 @@ Input Array
 | **long_runs** | 72-element ascending runs | Timsort / run-merge stress. |
 | pipe_organ | Ascending half + descending half | Mixed structure. |
 
-**Acceptance bounds** (CI regression tests):
-- **Structured** (sorted, nearly_sorted_95): ≤ **1.65×** `std::sort` median
-- **Random smoke** (50k random): ≤ **2.0×** `std::sort` median
+**Acceptance bounds** (CI regression tests, see [docs/BENCHMARK_SUITE.md](docs/BENCHMARK_SUITE.md)):
+- **Fully sorted** (100k): ≤ **`kAcceptFullySortedMaxSlowdown`×** `std::sort` median (default **4.0×**; sampling + dispatch can lag libc on tiny timings)
+- **Nearly sorted 95%** (100k): ≤ **1.65×** `std::sort` median
+- **Random smoke** (50k): ≤ **2.0×** `std::sort` median
 
-See [docs/BENCHMARK_SUITE.md](docs/BENCHMARK_SUITE.md) and `include/pase_bench_contract.h`.
+See `include/pase_bench_contract.h`.
 
 ### Running Benchmarks
 
@@ -137,10 +138,10 @@ cmake --build . -j$(nproc)
 ### 2. Run Tests
 
 ```bash
-ctest -R "Correctness|Profiler|CostModel|GpuSort|ConfigLoader|PerformanceRegression" --output-on-failure
+ctest --output-on-failure
 ```
 
-Expected output: **6 tests pass** in ~1 second.
+Expected output (default CPU build, MPI off): **8 tests pass** in a few seconds (`Phase5Integration`, `GpuComplexSort`, etc.). See [docs/CI.md](docs/CI.md).
 
 ### 3. Try Sorting
 
@@ -283,6 +284,8 @@ Emits JSON `cost_fit` section (median actual / predicted ratios per strategy) to
 - **[docs/BENCHMARK_SUITE.md](docs/BENCHMARK_SUITE.md)** — Versioned workload contract, acceptance rules.
 - **[docs/PERF_TUNING.md](docs/PERF_TUNING.md)** — Cost model calibration, threshold tuning, profiler behavior, GPU details.
 - **[docs/CI.md](docs/CI.md)** — CI expectations (CPU-always; CUDA optional on labeled runners).
+- **[docs/PHASE5.md](docs/PHASE5.md)** — Phase 5: SIMD profiler, optional introsort, GPU types, ML JSON, MPI.
+- **[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)** — Pre-tag build/test matrix & release steps.
 - **[absolute-docs/PDD.md](absolute-docs/PDD.md)** — Full product development document (design rationale, phase history).
 
 ---
@@ -291,7 +294,7 @@ Emits JSON `cost_fit` section (median actual / predicted ratios per strategy) to
 
 1. **Correctness first.** No data loss, no off-by-one errors. Fallback to safe introsort on any cost model uncertainty.
 
-2. **Workload-adaptive, not magic.** PASE wins when structure exists; on random data it ties or loses gracefully (guardrails enforce ≤ 1.65–2× slowdown in CI).
+2. **Workload-adaptive, not magic.** PASE wins when structure exists; on random data it ties or loses gracefully (CI guardrails: fully sorted 100k ≤ **`kAcceptFullySortedMaxSlowdown`×**, nearly sorted ≤ **1.65×**, random smoke ≤ **2×** `std::sort`).
 
 3. **Hardware-aware.** CPU ops/ms, GPU PCIe bandwidth, CUDA compute tuned separately; re-tune for your hardware with `fit_cost_model.py`.
 
@@ -301,22 +304,29 @@ Emits JSON `cost_fit` section (median actual / predicted ratios per strategy) to
 
 ---
 
-## Limitations & Future Work
+## Phase 5 — SIMD profiler, optional introsort, multi-type GPU, ML JSON, MPI
 
-### Current Limitations ℹ️
+See **[docs/PHASE5.md](docs/PHASE5.md)** for flags and detail.
 
-- **No distributed sort.** PASE is single-machine, single-core-friendly (with task parallelism elsewhere).
-- **GPU limited to `int` + `std::less<int>`** to keep the dispatch logic tractable. Multi-type GPU kernels require separate cost tuning.
-- **Profiler is approximate.** Sampling-based; very small samples on huge arrays may miss duplicates/structure. Use golden test seeds to validate.
-- **No "optimal" cost fit.** Offline tuning is heuristic (median ratios), not ML-based. Works well in practice but can be improved.
+| Feature | CMake / runtime | Status |
+|--------|-------------------|--------|
+| **SIMD profiler** (int pair/run metrics) | `PASE_ENABLE_SIMD_INTRINSICS` (default ON on x86_64 / AArch64) | **Shipped** (`simd_profiler.cpp`, AVX2 / NEON) |
+| **Built Hoare introsort for `int`** | `-DPASE_ENABLE_BUILT_INTROSORT_INT=ON` | **Shipped** (default remains `std::sort`) |
+| **GPU `float` / `double`** | CUDA + Thrust | **Shipped** (`gpu_sort_float`, `gpu_sort_double`) |
+| **GPU `std::complex`** (lexicographic real, then imag) | CUDA + Thrust; use **`LexicographicComplexLess`** with `adaptive_sort` | **Shipped** (`gpu_sort_complex_float`, `gpu_sort_complex_double`) |
+| **ML threshold JSON** | `-DPASE_ENABLE_ML_TUNING=ON`, `~/.pase/ml_thresholds.json` or `PASE_ML_CONFIG` | **Shipped** + `tune/collect_training_data.py`, `tune/train_ml_model.py` |
+| **MPI distributed** | `-DPASE_ENABLE_MPI=ON` | **Gather/sort/scatter** on rank 0 + balanced Scatterv (256 MiB gather cap; sample-sort TBD for huge N) |
 
-### Next Steps (Post-Phase 4)
+### Remaining limitations ℹ️
 
-1. **SIMD-accelerated run detection** to speed profiler.
-2. **Vectorized introsort** (AVX-512 or Neon on ARM) for CPU path throughput.
-3. **Distributed sort** (sketched in non-goals) if use case demands it.
-4. **Multi-type GPU support** (floats, complex keys) with templated cost model.
-5. **Machine learning tuning** to predict thresholds from profile vectors instead of hand-tuned ranges.
+- **Profiler** remains sampling-based; SIMD only accelerates **int** metrics on the sample vector.
+- **GPU `std::complex`**: lexicographic order only; use `pase::LexicographicComplexLess<T>` — not a general complex “norm” or user-defined key sort.
+- **MPI**: moderate-scale global sort via rank-0 buffer (byte-capped); huge **N** still wants sample-sort / k-way merge.
+- **ML**: runtime merge is JSON overrides; training uses optional scikit-learn when installed.
+
+### Historical “next steps” (now partially done above)
+
+Further work: **SIMD partition** inside introsort, deeper **embedded ML inference**, **sample-sort** MPI for memory scalability.
 
 ---
 
