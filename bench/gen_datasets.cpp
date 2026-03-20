@@ -1,22 +1,11 @@
-#include <algorithm>
-#include <random>
-#include <vector>
+#include "gen_datasets.h"
 
-enum class DatasetType {
-  sorted,
-  reverse,
-  nearly_sorted_95,
-  nearly_sorted_80,
-  random,
-  heavy_dup,
-  clustered,
-  pipe_organ,
-  large_random_1M,
-  large_random_10M
-};
+#include <algorithm>
+#include <numeric>
+#include <random>
 
 void generate_dataset(std::vector<int>& out, DatasetType type, size_t n,
-                     unsigned seed = 42) {
+                     unsigned seed) {
   std::mt19937 rng(seed);
   out.resize(n);
 
@@ -75,6 +64,16 @@ void generate_dataset(std::vector<int>& out, DatasetType type, size_t n,
       break;
     }
 
+    case DatasetType::long_runs: {
+      constexpr int run_len = 72;
+      for (size_t i = 0; i < n; i++) {
+        const int r = static_cast<int>(i / run_len);
+        const int off = static_cast<int>(i % run_len);
+        out[i] = r * (run_len + 12) + off;
+      }
+      break;
+    }
+
     case DatasetType::pipe_organ: {
       size_t mid = n / 2;
       for (size_t i = 0; i < mid; i++) {
@@ -120,6 +119,8 @@ const char* dataset_name(DatasetType type) {
       return "heavy_dup";
     case DatasetType::clustered:
       return "clustered";
+    case DatasetType::long_runs:
+      return "long_runs";
     case DatasetType::pipe_organ:
       return "pipe_organ";
     case DatasetType::large_random_1M:

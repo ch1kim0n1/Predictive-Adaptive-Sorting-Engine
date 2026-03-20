@@ -1,48 +1,19 @@
 #include "gpu_api.h"
 
 #include <cuda_runtime.h>
+#include <cstdint>
 
-#include <algorithm>
-#include <climits>
-#include <cstring>
+#if defined(PASE_GPU_SORT_USE_CUB)
+#include <cub/device/device_radix_sort.cuh>
 #include <vector>
+#else
+#include <thrust/execution_policy.h>
+#include <thrust/sort.h>
+#endif
+
+#include <cstring>
 
 namespace pase {
-
-namespace {
-
-__global__ void k_bitonic_step(int* d, int n, int j, int k) {
-  const int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= n) return;
-  const int ixj = i ^ j;
-  if (ixj <= i || ixj >= n) return;
-  const bool up = ((i & k) == 0);
-  const int ai = d[i];
-  const int aj = d[ixj];
-  if (up) {
-    if (ai > aj) {
-      d[i] = aj;
-      d[ixj] = ai;
-    }
-  } else {
-    if (ai < aj) {
-      d[i] = aj;
-      d[ixj] = ai;
-    }
-  }
-}
-
-int next_pow2(int x) {
-  int p = 1;
-  while (p < x) {
-    p <<= 1;
-  }
-  return p;
-}
-
-bool check(cudaError_t e) { return e == cudaSuccess; }
-
-}  // namespace
 
 bool gpu_sort_int_available() {
   int nd = 0;
@@ -52,6 +23,12 @@ bool gpu_sort_int_available() {
   return nd > 0;
 }
 
+namespace {
+
+bool check(cudaError_t e) { return e == cudaSuccess; }
+
+}  // namespace
+
 bool gpu_sort_int(int* host, int n) {
   if (n <= 1) {
     return true;
@@ -59,63 +36,96 @@ bool gpu_sort_int(int* host, int n) {
   if (!gpu_sort_int_available()) {
     return false;
   }
+  /*
+   * Thrust radix / merge sort on device (competitive vs hand-written bitonic).
+   * Below ~8k elements, host std::sort + profiling often wins end-to-end.
+   */
+  constexpr int kMinPracticalGpuSortN = 8192;
+  if (n < kMinPracticalGpuSortN) {
+    return false;
+  }
 
-  const int cap = next_pow2(n);
-  const size_t bytes = static_cast<size_t>(cap) * sizeof(int);
+  const size_t bytes = static_cast<size_t>(n) * sizeof(int);
 
-  std::vector<int> padded(static_cast<size_t>(cap));
-  std::memcpy(padded.data(), host, static_cast<size_t>(n) * sizeof(int));
-  std::fill(padded.begin() + n, padded.end(), INT_MAX);
+#if defined(PASE_GPU_SORT_USE_CUB)
+  /* Signed ints as uint32 keys preserving order (XOR bijection). */
+  std::vector<uint32_t> keys_in(static_cast<size_t>(n));
+  for (int i = 0; i < n; ++i) {
+    keys_in[static_cast<size_t>(i)] =
+        static_cast<uint32_t>(host[i]) ^ 0x80000000u;
+  }
+  uint32_t* d_in = nullptr;
+  uint32_t* d_out = nullptr;
+  if (!check(cudaMalloc(reinterpret_cast<void**>(&d_in), bytes))) {
+    return false;
+  }
+  if (!check(cudaMalloc(reinterpret_cast<void**>(&d_out), bytes))) {
+    cudaFree(d_in);
+    return false;
+  }
+  if (!check(cudaMemcpy(d_in, keys_in.data(), bytes, cudaMemcpyHostToDevice))) {
+    cudaFree(d_in);
+    cudaFree(d_out);
+    return false;
+  }
 
+  void* d_temp = nullptr;
+  size_t temp_bytes = 0;
+  cub::DeviceRadixSort::SortKeys(nullptr, temp_bytes, d_in, d_out, n);
+  if (!check(cudaMalloc(&d_temp, temp_bytes))) {
+    cudaFree(d_in);
+    cudaFree(d_out);
+    return false;
+  }
+  const cudaError_t sort_st = cub::DeviceRadixSort::SortKeys(
+      d_temp, temp_bytes, d_in, d_out, n);
+  cudaFree(d_temp);
+  cudaFree(d_in);
+  if (!check(sort_st)) {
+    cudaFree(d_out);
+    return false;
+  }
+  if (!check(cudaGetLastError())) {
+    cudaFree(d_out);
+    return false;
+  }
+
+  std::vector<uint32_t> keys_out(static_cast<size_t>(n));
+  if (!check(cudaMemcpy(keys_out.data(), d_out, bytes, cudaMemcpyDeviceToHost))) {
+    cudaFree(d_out);
+    return false;
+  }
+  cudaFree(d_out);
+  for (int i = 0; i < n; ++i) {
+    host[i] = static_cast<int>(keys_out[static_cast<size_t>(i)] ^ 0x80000000u);
+  }
+  return true;
+#else
   int* d = nullptr;
   if (!check(cudaMalloc(reinterpret_cast<void**>(&d), bytes))) {
     return false;
   }
 
-  cudaStream_t stream{};
-  if (!check(cudaStreamCreate(&stream))) {
+  if (!check(cudaMemcpy(d, host, bytes, cudaMemcpyHostToDevice))) {
     cudaFree(d);
     return false;
   }
 
-  if (!check(cudaMemcpyAsync(d, padded.data(), bytes, cudaMemcpyHostToDevice,
-                             stream))) {
-    cudaStreamDestroy(stream);
-    cudaFree(d);
-    return false;
-  }
-
-  constexpr int kThreads = 256;
-  const int blocks = (cap + kThreads - 1) / kThreads;
-
-  for (int k = 2; k <= cap; k <<= 1) {
-    for (int j = k >> 1; j > 0; j >>= 1) {
-      k_bitonic_step<<<blocks, kThreads, 0, stream>>>(d, cap, j, k);
-    }
-  }
+  thrust::sort(thrust::device, d, d + n);
 
   if (!check(cudaGetLastError())) {
-    cudaStreamDestroy(stream);
     cudaFree(d);
     return false;
   }
 
-  if (!check(cudaMemcpyAsync(host, d, static_cast<size_t>(n) * sizeof(int),
-                             cudaMemcpyDeviceToHost, stream))) {
-    cudaStreamDestroy(stream);
+  if (!check(cudaMemcpy(host, d, bytes, cudaMemcpyDeviceToHost))) {
     cudaFree(d);
     return false;
   }
 
-  if (!check(cudaStreamSynchronize(stream))) {
-    cudaStreamDestroy(stream);
-    cudaFree(d);
-    return false;
-  }
-
-  cudaStreamDestroy(stream);
   cudaFree(d);
   return true;
+#endif
 }
 
 }  // namespace pase

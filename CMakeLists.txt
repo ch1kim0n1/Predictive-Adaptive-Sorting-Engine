@@ -24,13 +24,32 @@ FetchContent_Declare(
 set(GTEST_USE_OWN_TR1_TUPLE 1)
 FetchContent_MakeAvailable(googletest)
 
-# Google Benchmark
+# Google Benchmark (library only by default; upstream self-tests can fail on some hosts, e.g. macOS CV output)
+option(
+  PASE_BUILD_BENCHMARK_UPSTREAM_TESTS
+  "Register Google Benchmark library self-tests in ctest (not PASE coverage)"
+  OFF)
+if(PASE_BUILD_BENCHMARK_UPSTREAM_TESTS)
+  set(BENCHMARK_ENABLE_TESTING ON CACHE BOOL "benchmark self-tests" FORCE)
+else()
+  set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "benchmark self-tests" FORCE)
+endif()
 FetchContent_Declare(
   benchmark
   GIT_REPOSITORY https://github.com/google/benchmark.git
   GIT_TAG v1.8.3
 )
 FetchContent_MakeAvailable(benchmark)
+
+# nlohmann/json (Phase 4+ config)
+FetchContent_Declare(
+  json
+  GIT_REPOSITORY https://github.com/nlohmann/json.git
+  GIT_TAG v3.11.3
+)
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+set(JSON_Install OFF CACHE INTERNAL "")
+FetchContent_MakeAvailable(json)
 
 # PASE library
 add_subdirectory(src)

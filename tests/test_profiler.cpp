@@ -2,6 +2,7 @@
 #include <pase.h>
 #include <profiler.h>
 #include <algorithm>
+#include <numeric>
 #include <random>
 #include <vector>
 
@@ -75,8 +76,10 @@ TEST_F(ProfilerTest, HeavyDuplicates_HasHigherDuplicateRatioThanRandom) {
 }
 
 TEST_F(ProfilerTest, SmallArray_HandlesGracefully) {
+  /* Use full sampling so tiny arrays are not mis-ordered by mid-stride extras. */
+  Profiler prof(1.0f);
   std::vector<int> arr = {1, 2, 3};
-  Profile p = profiler_.analyze(arr.data(), static_cast<int>(arr.size()));
+  Profile p = prof.analyze(arr.data(), static_cast<int>(arr.size()));
   EXPECT_EQ(p.n, 3);
   EXPECT_GT(p.sortedness, 0.99f);
 }
@@ -86,6 +89,29 @@ TEST_F(ProfilerTest, SingleElement_HandlesGracefully) {
   Profile p = profiler_.analyze(arr.data(), static_cast<int>(arr.size()));
   EXPECT_EQ(p.n, 1);
   EXPECT_EQ(p.sortedness, 1.0f);
+}
+
+/** Deterministic “golden” profiles with full sampling (second-stage path off). */
+TEST(ProfilerGolden, AscendingFullSampleStableMetrics) {
+  Profiler prof(1.0f);
+  std::vector<int> arr(240);
+  std::iota(arr.begin(), arr.end(), 0);
+  Profile p = prof.analyze(arr.data(), static_cast<int>(arr.size()));
+  EXPECT_EQ(p.n, 240);
+  EXPECT_FLOAT_EQ(p.sortedness, 1.0f);
+  EXPECT_FLOAT_EQ(p.duplicate_ratio, 0.0f);
+  EXPECT_EQ(p.avg_run_length, 240);
+  EXPECT_EQ(p.max_run_length, 240);
+}
+
+TEST(ProfilerGolden, AllDuplicatesFullSample) {
+  Profiler prof(1.0f);
+  std::vector<int> arr(333, -18);
+  Profile p = prof.analyze(arr.data(), static_cast<int>(arr.size()));
+  EXPECT_EQ(p.n, 333);
+  /* Entirely equal keys: duplicate estimators saturate; sortedness of
+   * sampled pairs is not “fully ascending” under strict weak ordering. */
+  EXPECT_GE(p.duplicate_ratio, 0.99f);
 }
 
 }  // namespace

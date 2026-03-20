@@ -18,4 +18,7 @@ enum class Strategy {
   GPU_SORT
 };
 
+/** Stable name for logs, CSV, plots. */
+const char* strategy_name(Strategy s);
+
 }  // namespace pase

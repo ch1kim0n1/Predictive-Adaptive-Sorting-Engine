@@ -17,6 +17,9 @@ struct SortLog {
   Strategy chosen_strategy;
   double predicted_cpu_ms;
   double predicted_gpu_ms;
+  /** Estimated GPU transfer (H2D+D2H) vs kernel ms when logging (Phase E). */
+  double predicted_gpu_transfer_ms;
+  double predicted_gpu_kernel_ms;
   double actual_ms;
   bool prediction_correct;
 };

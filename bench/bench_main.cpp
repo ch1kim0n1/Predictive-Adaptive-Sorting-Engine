@@ -44,6 +44,7 @@ static void CustomArguments(benchmark::internal::Benchmark* b) {
       ->Args({static_cast<int64_t>(DatasetType::random), n})
       ->Args({static_cast<int64_t>(DatasetType::heavy_dup), n})
       ->Args({static_cast<int64_t>(DatasetType::clustered), n})
+      ->Args({static_cast<int64_t>(DatasetType::long_runs), n})
       ->Args({static_cast<int64_t>(DatasetType::pipe_organ), n});
 }
 

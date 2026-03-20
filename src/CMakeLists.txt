@@ -2,6 +2,10 @@ set(PASE_SOURCES
   profiler.cpp
   dispatcher.cpp
   cost_model.cpp
+  strategies.cpp
+  config_loader.cpp
+  runtime.cpp
+  plan.cpp
   feedback.cpp
   threshold_tuner.cpp
   pase.cpp
@@ -10,6 +14,9 @@ set(PASE_SOURCES
   cpu/run_merge.cpp
   cpu/quicksort_3way.cpp
 )
+
+option(PASE_GPU_SORT_USE_CUB
+  "Use CUB DeviceRadixSort for int keys (experimental; default is Thrust)" OFF)
 
 if(PASE_ENABLE_CUDA)
   enable_language(CUDA)
@@ -31,9 +38,15 @@ target_include_directories(pase PUBLIC
   ${CMAKE_SOURCE_DIR}
 )
 
+target_link_libraries(pase PUBLIC nlohmann_json::nlohmann_json)
+
 target_compile_features(pase PUBLIC cxx_std_17)
 
 if(PASE_ENABLE_CUDA)
   target_compile_definitions(pase PUBLIC PASE_WITH_CUDA=1)
   target_link_libraries(pase PRIVATE CUDA::cudart)
+  if(PASE_GPU_SORT_USE_CUB)
+    # CUB is header-only and ships with the CUDA toolkit includes.
+    target_compile_definitions(pase PUBLIC PASE_GPU_SORT_USE_CUB=1)
+  endif()
 endif()

@@ -149,4 +149,35 @@ TEST(CorrectnessTest, VerboseModeRunsWithoutError) {
   AssertSorted(arr);
 }
 
+TEST(CorrectnessTest, LongRunsStressLikeBenchSuite) {
+  constexpr int n = 8000;
+  constexpr int run_len = 72;
+  std::vector<int> arr(static_cast<size_t>(n));
+  for (int i = 0; i < n; ++i) {
+    const int r = i / run_len;
+    const int off = i % run_len;
+    arr[static_cast<size_t>(i)] = r * (run_len + 12) + off;
+  }
+  std::vector<int> copy = arr;
+  adaptive_sort(arr);
+  AssertSorted(arr);
+  AssertSameElements(copy, arr);
+}
+
+TEST(CorrectnessTest, ReverseTwoElement) {
+  std::vector<int> arr = {9, 1};
+  adaptive_sort(arr);
+  AssertSorted(arr);
+}
+
+TEST(CorrectnessTest, MostlySortedWithTailReverse) {
+  std::vector<int> arr(1500);
+  std::iota(arr.begin(), arr.end(), 0);
+  std::reverse(arr.begin() + 1200, arr.end());
+  std::vector<int> copy = arr;
+  adaptive_sort(arr);
+  AssertSorted(arr);
+  AssertSameElements(copy, arr);
+}
+
 }  // namespace

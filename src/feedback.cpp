@@ -1,32 +1,17 @@
 #include "feedback.h"
+#include "strategies.h"
 
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <mutex>
-#include <filesystem>
 
 namespace fs = std::filesystem;
 
 namespace pase {
 
 namespace {
-
-const char* strategy_csv_name(Strategy s) {
-  switch (s) {
-    case Strategy::INSERTION_OPT:
-      return "INSERTION_OPT";
-    case Strategy::RUN_MERGE_OPT:
-      return "RUN_MERGE_OPT";
-    case Strategy::THREE_WAY_QS:
-      return "THREE_WAY_QS";
-    case Strategy::INTROSORT:
-      return "INTROSORT";
-    case Strategy::GPU_SORT:
-      return "GPU_SORT";
-  }
-  return "UNKNOWN";
-}
 
 void ensure_env_feedback_default(FeedbackLogger& log) {
   static std::once_flag once;
@@ -83,14 +68,16 @@ void FeedbackLogger::log(const SortLog& entry) {
 
   if (!exists) {
     out << "sortedness,duplicate_ratio,entropy,avg_run_length,n,strategy,"
-           "pred_cpu_ms,pred_gpu_ms,actual_ms,prediction_correct\n";
+           "pred_cpu_ms,pred_gpu_ms,pred_gpu_transfer_ms,pred_gpu_kernel_ms,"
+           "actual_ms,prediction_correct\n";
   }
 
   out << std::fixed << std::setprecision(6) << entry.sortedness << ','
       << entry.duplicate_ratio << ',' << entry.entropy << ','
       << entry.avg_run_length << ',' << entry.n << ','
-      << strategy_csv_name(entry.chosen_strategy) << ','
+      << strategy_name(entry.chosen_strategy) << ','
       << entry.predicted_cpu_ms << ',' << entry.predicted_gpu_ms << ','
+      << entry.predicted_gpu_transfer_ms << ',' << entry.predicted_gpu_kernel_ms << ','
       << entry.actual_ms << ',' << (entry.prediction_correct ? 1 : 0) << '\n';
 }
 

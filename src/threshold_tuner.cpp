@@ -12,6 +12,11 @@ double ThresholdTuner::gpu_win_factor() const {
   return gpu_win_factor_;
 }
 
+void ThresholdTuner::set_gpu_win_factor(double v) {
+  std::lock_guard<std::mutex> lock(mu_);
+  gpu_win_factor_ = std::clamp(v, kMinFactor, kMaxFactor);
+}
+
 void ThresholdTuner::observe_gpu_decision(double predicted_gpu_ms,
                                          double actual_ms, Strategy chosen) {
   if (chosen != Strategy::GPU_SORT) {

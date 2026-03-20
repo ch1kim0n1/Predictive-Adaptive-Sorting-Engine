@@ -1,12 +1,11 @@
 #pragma once
 
-#include "cost_model.h"
 #include "cpu_algorithms.h"
-#include "dispatcher.h"
 #include "feedback.h"
 #include "gpu_api.h"
 #include "pase.h"
 #include "profiler.h"
+#include "runtime.h"
 #include "threshold_tuner.h"
 
 #include <chrono>
@@ -17,17 +16,8 @@
 
 namespace pase {
 
-namespace {
-
-CostModel& global_cost_model() {
-  static CostModel model;
-  static std::once_flag once;
-  std::call_once(once, [] { CostModel::calibrate_with_int_sort(model); });
-  return model;
-}
-
-void print_verbose(const Profile& p, Strategy s, double pred_gpu_ms,
-                  double pred_cpu_ms) {
+inline void print_verbose(const Profile& p, Strategy s, double pred_gpu_ms,
+                         double pred_cpu_ms) {
   std::cout << "\n[PASE Profiler]\n";
   std::cout << "  n               = " << std::fixed << p.n << "\n";
   std::cout << "  sample_rate     = " << std::setprecision(1)
@@ -75,6 +65,8 @@ void print_verbose(const Profile& p, Strategy s, double pred_gpu_ms,
   }
 }
 
+namespace {
+
 template <typename T, typename Comp>
 void execute_strategy(T* array, int n, Strategy s, const Comp& comp) {
   switch (s) {
@@ -109,7 +101,8 @@ template <typename T, typename Comp>
 void adaptive_sort(T* array, int n, const Comp& comp, bool verbose) {
   if (n <= 1) return;
 
-  if (n < 1000) {
+  /* Below this, profiling overhead dominates vs a tuned std::sort. */
+  if (n < 3072) {
     cpu::introsort(array, n, comp);
     return;
   }
@@ -126,15 +119,20 @@ void adaptive_sort(T* array, int n, const Comp& comp, bool verbose) {
 #endif
   }();
 
-  Dispatcher dispatcher;
+  const Dispatcher& dispatcher = runtime_dispatcher();
   const double win = global_threshold_tuner().gpu_win_factor();
   Strategy best_cpu =
       cm.best_cpu_strategy(p, dispatcher.thresholds().sorted,
                           dispatcher.thresholds().run_merge,
-                          dispatcher.thresholds().dup);
+                          dispatcher.thresholds().dup,
+                          dispatcher.thresholds().max_insertion_n);
   Strategy s = dispatcher.select_strategy(p, cm, sizeof(T), gpu_ok, win);
 
   const double pred_gpu = cm.estimate_gpu(p.n, p.entropy, sizeof(T));
+  const double pred_gpu_xfr =
+      cm.estimate_gpu_transfer_ms(p.n, sizeof(T));
+  const double pred_gpu_kern =
+      cm.estimate_gpu_kernel_ms(p.n, p.entropy);
   double pred_cpu_for_log = cm.estimate_cpu(p, s);
   if (s == Strategy::GPU_SORT) {
     pred_cpu_for_log = cm.estimate_cpu(p, best_cpu);
@@ -160,11 +158,18 @@ void adaptive_sort(T* array, int n, const Comp& comp, bool verbose) {
     const bool ok =
         std::abs(actual_ms - pred_for_strategy) <
         0.35 * std::max(actual_ms, 1e-6) + 2.0;
-    SortLog log{p.sortedness,       p.duplicate_ratio,
-                p.entropy,          p.avg_run_length,
-                p.n,                s,
-                pred_for_strategy,  pred_gpu,
-                actual_ms,          ok};
+    SortLog log{p.sortedness,
+                p.duplicate_ratio,
+                p.entropy,
+                p.avg_run_length,
+                p.n,
+                s,
+                pred_for_strategy,
+                pred_gpu,
+                pred_gpu_xfr,
+                pred_gpu_kern,
+                actual_ms,
+                ok};
     fl.log(log);
   }
 }

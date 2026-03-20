@@ -12,24 +12,28 @@ namespace cpu {
 
 namespace detail {
 
-/** Extend ascending run; optionally fix one-element disorders (repair_budget). */
+/** TimSort-style minrun (Java/Python reference). */
+inline int compute_minrun(int n) {
+  int r = 0;
+  int nn = n;
+  while (nn >= 64) {
+    r |= nn & 1;
+    nn >>= 1;
+  }
+  return nn + r;
+}
+
+/** Extend a non-decreasing run [start, end) under comp (strict ascending order). */
 template <typename T, typename Comp>
-int extend_run(T* A, int start, int n, int repair_budget, const Comp& comp) {
+int extend_run(T* A, int start, int n, const Comp& comp) {
   int end = start + 1;
-  while (end < n) {
-    if (!comp(A[end], A[end - 1])) {
-      ++end;
-    } else if (repair_budget > 0 && end + 1 < n &&
-               !comp(A[end + 1], A[end - 1])) {
-      std::swap(A[end], A[end - 1]);
-      --repair_budget;
-      ++end;
-    } else {
-      break;
-    }
+  while (end < n && !comp(A[end], A[end - 1])) {
+    ++end;
   }
   return end;
 }
+
+constexpr int kMinGallop = 7;
 
 /** Merge sorted [lo, mid) and [mid, hi) using scratch; result in A[lo, hi). */
 template <typename T, typename Comp>
@@ -40,11 +44,31 @@ void merge_ranges(T* a, int lo, int mid, int hi, const Comp& comp,
   int j = mid;
   int k = 0;
   scratch.resize(static_cast<size_t>(len));
+  int consec_left = 0;
+  int consec_right = 0;
   while (i < mid && j < hi) {
     if (comp(a[j], a[i])) {
-      scratch[static_cast<size_t>(k++)] = std::move(a[j++]);
+      if (consec_right >= kMinGallop) {
+        while (j < hi && comp(a[j], a[i])) {
+          scratch[static_cast<size_t>(k++)] = std::move(a[j++]);
+        }
+        consec_right = 0;
+      } else {
+        scratch[static_cast<size_t>(k++)] = std::move(a[j++]);
+        consec_right++;
+        consec_left = 0;
+      }
     } else {
-      scratch[static_cast<size_t>(k++)] = std::move(a[i++]);
+      if (consec_left >= kMinGallop) {
+        while (i < mid && !comp(a[j], a[i])) {
+          scratch[static_cast<size_t>(k++)] = std::move(a[i++]);
+        }
+        consec_left = 0;
+      } else {
+        scratch[static_cast<size_t>(k++)] = std::move(a[i++]);
+        consec_left++;
+        consec_right = 0;
+      }
     }
   }
   while (i < mid) {
@@ -58,7 +82,7 @@ void merge_ranges(T* a, int lo, int mid, int hi, const Comp& comp,
   }
 }
 
-constexpr int kRunMergeInsertionCutoff = 32;
+constexpr int kRunMergeInsertionCutoff = 40;
 constexpr int kThreeWayInsertionCutoff = 16;
 
 }  // namespace detail
@@ -130,15 +154,21 @@ void run_merge_sort(T* a, int n, const Comp& comp) {
 
   std::vector<std::pair<int, int>> runs;
   int pos = 0;
-  const int kRepair = 8;
   while (pos < n) {
     int start = pos;
-    int end = detail::extend_run(a, start, n, kRepair, comp);
+    int end = detail::extend_run(a, start, n, comp);
     runs.emplace_back(start, end);
     pos = end;
   }
 
   if (runs.size() <= 1) {
+    return;
+  }
+
+  const int mr = std::max(1, detail::compute_minrun(n));
+  const size_t max_runs = static_cast<size_t>(std::max(8, n / mr));
+  if (runs.size() > max_runs) {
+    std::sort(a, a + n, comp);
     return;
   }
 

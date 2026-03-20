@@ -14,12 +14,39 @@ namespace pase {
 class Dispatcher {
  public:
   struct Thresholds {
+    /** Sortedness above which insertion may be chosen (only if n <= max_insertion_n). */
     float sorted;
     int run_merge;
     float dup;
     int min_gpu;
+    /** Insertion sort only for n <= this; avoids O(n²) pathologies on large arrays. */
+    int max_insertion_n;
+    /**
+     * If model estimates chosen CPU strategy slower than this × introsort estimate,
+     * fall back to INTROSORT.
+     */
+    float strategy_guardrail;
+    /** GPU picked only if gpu_ms * gpu_rel_margin < cpu_ms * gpu_win_factor. */
+    float gpu_rel_margin;
+    /**
+     * Near dup threshold: THREE_WAY only if model est_three_way < est_intro * this
+     * fraction (else INTROSORT). Set to 1 to disable border conservative behavior.
+     */
+    float dup_border_band;
+    int run_merge_border;
+    /** RUN_MERGE border ± run_merge_border avg_run_length uses same rule as dup. */
+    float conservative_specialist_frac;
     Thresholds()
-        : sorted(0.90f), run_merge(64), dup(0.40f), min_gpu(100000) {}
+        : sorted(0.90f),
+          run_merge(32),
+          dup(0.32f),
+          min_gpu(250000),
+          max_insertion_n(384),
+          strategy_guardrail(2.25f),
+          gpu_rel_margin(1.12f),
+          dup_border_band(0.08f),
+          run_merge_border(6),
+          conservative_specialist_frac(0.88f) {}
   };
 
   explicit Dispatcher(const Thresholds& thr = Thresholds());

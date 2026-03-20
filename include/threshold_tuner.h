@@ -17,6 +17,9 @@ class ThresholdTuner {
 
   double gpu_win_factor() const;
 
+  /** Clamp to [kMinFactor, kMaxFactor]. */
+  void set_gpu_win_factor(double v);
+
   /**
    * @param predicted_gpu_ms cost model GPU estimate
    * @param actual_ms measured wall time for chosen path

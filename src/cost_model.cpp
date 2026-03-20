@@ -10,24 +10,40 @@ namespace pase {
 
 CostModel::CostModel() : cpu_ops_per_ms_(1e6) {}
 
-double CostModel::estimate_gpu(int n, float entropy, std::size_t elem_size) const {
+void CostModel::apply_fit(const CostModelFit& f) {
+  fit_ = f;
+}
+
+double CostModel::estimate_gpu_transfer_ms(int n, std::size_t elem_size) const {
   const double bytes =
       static_cast<double>(std::max(0, n)) * static_cast<double>(elem_size);
-  const double transfer_ms =
-      (2.0 * bytes / (kPcieGbPerS * 1e9)) * 1000.0;
+  return (2.0 * bytes / (kPcieGbPerS * 1e9)) * 1000.0;
+}
+
+double CostModel::estimate_gpu_kernel_ms(int n, float entropy) const {
   const double nn = static_cast<double>(std::max(2, n));
   const double lgn = std::log2(nn);
   const double ops = nn * lgn * lgn;
-  const double kernel_ms = (ops / (kGpuTflops * 1e12)) * 1000.0;
+  double kernel_ms = (ops / (kGpuTflops * 1e12)) * 1000.0;
+  kernel_ms *= std::max(1e-6, fit_.gpu_kernel_scale);
   double entropy_factor = 1.0 - 0.3 * static_cast<double>(entropy);
   entropy_factor = std::max(0.1, entropy_factor);
-  return transfer_ms + kernel_ms * entropy_factor;
+  return kernel_ms * entropy_factor;
+}
+
+double CostModel::estimate_gpu(int n, float entropy, std::size_t elem_size) const {
+  return estimate_gpu_transfer_ms(n, elem_size) +
+         estimate_gpu_kernel_ms(n, entropy);
 }
 
 double CostModel::estimate_cpu(const Profile& p, Strategy s) const {
   const double n = static_cast<double>(std::max(1, p.n));
   double base = 0.0;
-
+  /* Amortized profiler + dispatch overhead (O(1) dominant term vs cache effects). */
+  const double profile_bias =
+      (1.0 + 0.02 * (n / 500000.0)) * std::max(1e-6, fit_.profile_bias_mult);
+  /* Per-strategy corrections vs introsort-like baseline (tuned conservatively). */
+  double strategy_scale = 1.0;
   switch (s) {
     case Strategy::INSERTION_OPT: {
       double disorder =
@@ -36,9 +52,9 @@ double CostModel::estimate_cpu(const Profile& p, Strategy s) const {
       break;
     }
     case Strategy::RUN_MERGE_OPT: {
-      double runs =
-          std::max(1.0, static_cast<double>(std::max(1, p.avg_run_length)));
-      base = n * std::log2(std::max(2.0, n / runs));
+      const int arl = std::max(1, p.avg_run_length);
+      const double num_runs = std::max(1.0, n / static_cast<double>(arl));
+      base = n * std::log2(std::max(2.0, num_runs));
       break;
     }
     case Strategy::THREE_WAY_QS: {
@@ -53,14 +69,40 @@ double CostModel::estimate_cpu(const Profile& p, Strategy s) const {
       break;
   }
 
+  double fit_scale = 1.0;
+  switch (s) {
+    case Strategy::RUN_MERGE_OPT:
+      strategy_scale = 0.88;
+      fit_scale = fit_.scale_run_merge;
+      break;
+    case Strategy::THREE_WAY_QS:
+      strategy_scale = 0.86;
+      fit_scale = fit_.scale_three_way;
+      break;
+    case Strategy::INSERTION_OPT:
+      strategy_scale = 1.02;
+      fit_scale = fit_.scale_insertion;
+      break;
+    case Strategy::INTROSORT:
+      fit_scale = fit_.scale_introsort;
+      break;
+    default:
+      fit_scale = fit_.scale_introsort;
+      break;
+  }
+
+  fit_scale = std::max(1e-6, fit_scale);
+  strategy_scale *= fit_scale;
+
   const double denom = std::max(1e-300, cpu_ops_per_ms_);
-  return base / denom;
+  return (base * profile_bias * strategy_scale) / denom;
 }
 
 Strategy CostModel::best_cpu_strategy(const Profile& p,
                                      float sorted_insertion_thr,
                                      int run_merge_thr,
-                                     float dup_thr) const {
+                                     float dup_thr,
+                                     int max_insertion_n) const {
   Strategy best = Strategy::INTROSORT;
   double best_cost = estimate_cpu(p, Strategy::INTROSORT);
 
@@ -78,7 +120,7 @@ Strategy CostModel::best_cpu_strategy(const Profile& p,
       best = Strategy::THREE_WAY_QS;
     }
   }
-  if (p.sortedness > sorted_insertion_thr - 0.08f &&
+  if (p.n <= max_insertion_n && p.sortedness > sorted_insertion_thr - 0.08f &&
       p.sortedness <= sorted_insertion_thr) {
     double c = estimate_cpu(p, Strategy::INSERTION_OPT);
     if (c < best_cost) {
