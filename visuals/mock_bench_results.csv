@@ -1,0 +1,35 @@
+# PASE mock benchmark results — representative data based on README v1.2 performance claims.
+# Format matches output of ./bench/bench_results (pase_bench_suite v1.2).
+# Columns: dataset, n, pase_ms, std_ms, std_stable_ms, speedup_vs_std, strategy
+dataset,n,pase_ms,std_ms,std_stable_ms,speedup_vs_std,strategy
+sorted,10000,0.042,0.078,0.091,1.86,insertion
+sorted,100000,0.38,0.72,0.84,1.89,insertion
+sorted,500000,1.85,3.50,4.10,1.89,insertion
+reverse,10000,0.071,0.082,0.095,1.15,run_merge
+reverse,100000,0.65,0.75,0.87,1.15,run_merge
+reverse,500000,3.20,3.68,4.25,1.15,run_merge
+nearly_sorted_95,10000,0.055,0.074,0.086,1.35,run_merge
+nearly_sorted_95,100000,0.52,0.71,0.83,1.37,run_merge
+nearly_sorted_95,500000,2.55,3.48,4.05,1.37,run_merge
+nearly_sorted_80,10000,0.065,0.076,0.088,1.17,run_merge
+nearly_sorted_80,100000,0.62,0.73,0.85,1.18,run_merge
+nearly_sorted_80,500000,3.02,3.55,4.12,1.18,run_merge
+random,10000,0.078,0.080,0.093,1.03,introsort
+random,100000,0.97,0.98,1.14,1.01,introsort
+random,500000,5.40,5.45,6.32,1.01,introsort
+heavy_dup,10000,0.048,0.079,0.092,1.65,three_way
+heavy_dup,100000,0.44,0.76,0.88,1.73,three_way
+heavy_dup,500000,2.10,3.72,4.30,1.77,three_way
+clustered,10000,0.072,0.077,0.090,1.07,introsort
+clustered,100000,0.88,0.96,1.11,1.09,introsort
+clustered,500000,4.90,5.30,6.15,1.08,introsort
+long_runs,10000,0.050,0.075,0.087,1.50,run_merge
+long_runs,100000,0.47,0.73,0.85,1.55,run_merge
+long_runs,500000,2.25,3.57,4.14,1.59,run_merge
+pipe_organ,10000,0.068,0.076,0.089,1.12,run_merge
+pipe_organ,100000,0.66,0.75,0.87,1.14,run_merge
+pipe_organ,500000,3.28,3.66,4.24,1.12,run_merge
+sorted,1000000,3.60,6.95,8.10,1.93,gpu
+random,1000000,10.80,11.00,12.75,1.02,introsort
+heavy_dup,1000000,4.05,7.20,8.35,1.78,gpu
+long_runs,1000000,4.50,7.15,8.30,1.59,gpu
