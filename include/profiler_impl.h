@@ -75,7 +75,9 @@ Profile Profiler::analyze(const T* array, int n, const Comp& comp) {
     return p;
   }
 
-  const int sample_count = std::max(1, static_cast<int>(n * sample_rate_));
+  const int raw_sample_count = std::max(1, static_cast<int>(n * sample_rate_));
+  const int sample_cap = (n >= 1'000'000) ? 8192 : 4096;
+  const int sample_count = std::min(raw_sample_count, sample_cap);
   const int stride = std::max(1, n / sample_count);
 
   std::vector<T> samples;
@@ -95,13 +97,15 @@ Profile Profiler::analyze(const T* array, int n, const Comp& comp) {
   const bool dup_ambiguous = pre_dup > 0.12f && pre_dup < 0.55f;
   const bool order_ambiguous = pre_sorted > 0.22f && pre_sorted < 0.78f;
   const bool need_refine =
-      stride >= 2 && static_cast<int>(samples.size()) < 3000 &&
+      n < 200000 && stride >= 2 && static_cast<int>(samples.size()) < 3000 &&
       (dup_ambiguous || order_ambiguous);
   if (need_refine) {
     for (int ii = stride / 2; ii < n; ii += stride) {
       samples.push_back(array[ii]);
     }
   }
+  p.sample_rate = static_cast<float>(samples.size()) /
+                  static_cast<float>(std::max(1, n));
 
   T min_val = samples[0];
   T max_val = samples[0];

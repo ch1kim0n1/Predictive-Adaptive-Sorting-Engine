@@ -8,6 +8,7 @@
 #include "runtime.h"
 #include "threshold_tuner.h"
 
+#include <algorithm>
 #include <chrono>
 #include <complex>
 #include <iomanip>
@@ -126,9 +127,50 @@ template <typename T, typename Comp>
 void adaptive_sort(T* array, int n, const Comp& comp, bool verbose) {
   if (n <= 1) return;
 
-  /* Below this, profiling overhead dominates vs a tuned std::sort. */
-  if (n < 3072) {
-    cpu::introsort(array, n, comp);
+  // Fast probe: detect inputs where profiling is unlikely to beat std::sort.
+  bool likely_generic = false;
+  bool likely_reverse_like = false;
+  bool structured_for_specialist = false;
+  if (n >= 2) {
+    const int probe_n = std::min(n, 2048);
+    int desc_edges = 0;
+    int eq_edges = 0;
+    int runs = 1;
+    for (int i = 1; i < probe_n; ++i) {
+      const bool less_cur_prev = comp(array[i], array[i - 1]);
+      const bool less_prev_cur = comp(array[i - 1], array[i]);
+      if (less_cur_prev) {
+        ++desc_edges;
+        ++runs;
+      }
+      if (!less_cur_prev && !less_prev_cur) {
+        ++eq_edges;
+      }
+    }
+    const double edges = static_cast<double>(std::max(1, probe_n - 1));
+    const double desc_ratio = static_cast<double>(desc_edges) / edges;
+    const double eq_ratio = static_cast<double>(eq_edges) / edges;
+    const double avg_run_probe =
+        static_cast<double>(probe_n) / static_cast<double>(std::max(1, runs));
+
+    likely_generic =
+        (desc_ratio >= 0.20 && desc_ratio <= 0.80 && eq_ratio < 0.75 &&
+         avg_run_probe < 8.0);
+    likely_reverse_like =
+        (desc_ratio > 0.95 && eq_ratio < 0.10 && avg_run_probe < 4.0);
+    structured_for_specialist =
+        (desc_ratio < 0.08 && avg_run_probe >= 12.0);
+  }
+
+  // Small inputs: only pay profiling if structure likely benefits specialists.
+  if (n < 16384 && !structured_for_specialist) {
+    std::sort(array, array + n, comp);
+    return;
+  }
+
+  // Mid-to-large generic/reverse-like inputs: avoid profiling overhead.
+  if (n >= 50000 && (likely_generic || likely_reverse_like)) {
+    std::sort(array, array + n, comp);
     return;
   }
 

@@ -38,15 +38,15 @@ class Dispatcher {
     float conservative_specialist_frac;
     Thresholds()
         : sorted(0.90f),
-          run_merge(32),
-          dup(0.32f),
+          run_merge(20),
+          dup(0.90f),
           min_gpu(250000),
-          max_insertion_n(384),
+          max_insertion_n(1024),
           strategy_guardrail(2.25f),
           gpu_rel_margin(1.12f),
           dup_border_band(0.08f),
           run_merge_border(6),
-          conservative_specialist_frac(0.88f) {}
+          conservative_specialist_frac(0.96f) {}
   };
 
   explicit Dispatcher(const Thresholds& thr = Thresholds());

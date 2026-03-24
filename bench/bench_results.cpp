@@ -14,8 +14,10 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
+#include <iomanip>
 #include <iostream>
 #include <numeric>
 #include <sstream>
@@ -56,6 +58,15 @@ int repeat_count(int argc, char** argv) {
   return 7;
 }
 
+unsigned seed_value(int argc, char** argv) {
+  for (int i = 1; i + 1 < argc; ++i) {
+    if (std::string(argv[i]) == "--seed") {
+      return static_cast<unsigned>(std::stoul(argv[i + 1]));
+    }
+  }
+  return 42u;
+}
+
 std::vector<size_t> parse_sizes_default(bool quick) {
   if (quick) {
     return {100000};
@@ -81,6 +92,78 @@ std::vector<size_t> parse_sizes_arg(int argc, char** argv) {
     return out;
   }
   return {};
+}
+
+std::string now_utc_iso8601() {
+  const auto now = std::chrono::system_clock::now();
+  const std::time_t tt = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+#if defined(_WIN32)
+  gmtime_s(&tm, &tt);
+#else
+  gmtime_r(&tt, &tm);
+#endif
+  std::ostringstream os;
+  os << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+  return os.str();
+}
+
+const char* getenv_or_empty(const char* name) {
+  const char* v = std::getenv(name);
+  return v ? v : "";
+}
+
+std::string platform_os() {
+#if defined(__APPLE__)
+  return "macOS";
+#elif defined(__linux__)
+  return "Linux";
+#elif defined(_WIN32)
+  return "Windows";
+#else
+  return "UnknownOS";
+#endif
+}
+
+std::string platform_arch() {
+#if defined(__aarch64__) || defined(_M_ARM64)
+  return "arm64";
+#elif defined(__x86_64__) || defined(_M_X64)
+  return "x86_64";
+#elif defined(__i386__) || defined(_M_IX86)
+  return "x86";
+#else
+  return "unknown_arch";
+#endif
+}
+
+std::string compiler_id() {
+#if defined(__clang__)
+  return std::string("clang-") + __clang_version__;
+#elif defined(__GNUC__)
+  return std::string("gcc-") + __VERSION__;
+#elif defined(_MSC_FULL_VER)
+  return std::string("msvc-") + std::to_string(_MSC_FULL_VER);
+#else
+  return "unknown_compiler";
+#endif
+}
+
+std::string join_sizes(const std::vector<size_t>& sizes) {
+  std::ostringstream os;
+  for (size_t i = 0; i < sizes.size(); ++i) {
+    if (i) {
+      os << ',';
+    }
+    os << sizes[i];
+  }
+  return os.str();
+}
+
+unsigned dataset_seed(unsigned base_seed, DatasetType type, size_t n) {
+  const unsigned t = static_cast<unsigned>(type);
+  const unsigned n_fold = static_cast<unsigned>(n % 2147483647u);
+  return base_seed ^ (t * 2654435761u) ^ (n_fold * 2246822519u);
 }
 
 struct TimingStats {
@@ -131,6 +214,7 @@ int main(int argc, char** argv) {
   const bool quick = flag(argc, argv, "--quick");
   const char* csv_path = out_path(argc, argv);
   const int repeats = repeat_count(argc, argv);
+  const unsigned base_seed = seed_value(argc, argv);
   std::vector<size_t> sizes = parse_sizes_arg(argc, argv);
   if (sizes.empty()) {
     sizes = parse_sizes_default(quick);
@@ -143,6 +227,16 @@ int main(int argc, char** argv) {
   }
 
   out << "# pase_bench_suite=" << PASE_BENCH_SUITE_VERSION << '\n';
+  out << "# benchmark_utc=" << now_utc_iso8601() << '\n';
+  out << "# git_commit=" << getenv_or_empty("PASE_BENCH_GIT_COMMIT") << '\n';
+  out << "# github_sha=" << getenv_or_empty("GITHUB_SHA") << '\n';
+  out << "# os=" << platform_os() << '\n';
+  out << "# arch=" << platform_arch() << '\n';
+  out << "# compiler=" << compiler_id() << '\n';
+  out << "# quick=" << (quick ? 1 : 0) << '\n';
+  out << "# repeat=" << repeats << '\n';
+  out << "# seed=" << base_seed << '\n';
+  out << "# sizes=" << join_sizes(sizes) << '\n';
   out << "dataset,n,sortedness,dup_ratio,entropy,avg_run_length,strategy,"
          "pase_ms,pase_stdev_ms,std_ms,std_stdev_ms,stable_ms,stable_stdev_ms,"
          "speedup_vs_std,speedup_vs_stable,pred_gpu_ms,pred_cpu_ms,gpu_"
@@ -153,7 +247,7 @@ int main(int argc, char** argv) {
   auto run_grid = [&](DatasetType type) {
     for (size_t n_target : sizes) {
       std::vector<int> base;
-      generate_dataset(base, type, n_target);
+      generate_dataset(base, type, n_target, dataset_seed(base_seed, type, n_target));
       const size_t n = base.size();
 
       pase::Profiler prof(0.015f);

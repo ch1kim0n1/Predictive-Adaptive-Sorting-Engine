@@ -76,11 +76,11 @@ double CostModel::estimate_cpu(const Profile& p, Strategy s) const {
       fit_scale = fit_.scale_run_merge;
       break;
     case Strategy::THREE_WAY_QS:
-      strategy_scale = 0.86;
+      strategy_scale = 0.95;
       fit_scale = fit_.scale_three_way;
       break;
     case Strategy::INSERTION_OPT:
-      strategy_scale = 1.02;
+      strategy_scale = 1.00;
       fit_scale = fit_.scale_insertion;
       break;
     case Strategy::INTROSORT:
@@ -120,8 +120,7 @@ Strategy CostModel::best_cpu_strategy(const Profile& p,
       best = Strategy::THREE_WAY_QS;
     }
   }
-  if (p.n <= max_insertion_n && p.sortedness > sorted_insertion_thr - 0.08f &&
-      p.sortedness <= sorted_insertion_thr) {
+  if (p.n <= max_insertion_n && p.sortedness > sorted_insertion_thr - 0.08f) {
     double c = estimate_cpu(p, Strategy::INSERTION_OPT);
     if (c < best_cost) {
       best = Strategy::INSERTION_OPT;

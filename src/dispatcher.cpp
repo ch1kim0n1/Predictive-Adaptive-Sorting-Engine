@@ -7,6 +7,16 @@ Dispatcher::Dispatcher(const Thresholds& thr) : thresholds_(thr) {}
 Strategy Dispatcher::select_strategy(const Profile& p, const CostModel& cm,
                                     std::size_t element_size, bool gpu_available,
                                     double gpu_win_factor) const {
+  auto insertion_cap_for = [&](const Profile& prof) -> int {
+    int cap = thresholds_.max_insertion_n;
+    if (prof.sortedness >= 0.98f && prof.entropy <= 0.35f) {
+      cap *= 4;
+    } else if (prof.sortedness >= 0.95f && prof.entropy <= 0.50f) {
+      cap *= 2;
+    }
+    return cap;
+  };
+
   auto apply_guardrail = [&](Strategy s) -> Strategy {
     if (s == Strategy::GPU_SORT) {
       return s;
@@ -20,14 +30,26 @@ Strategy Dispatcher::select_strategy(const Profile& p, const CostModel& cm,
     return s;
   };
 
-  if (p.n <= thresholds_.max_insertion_n &&
+  const int insertion_cap = insertion_cap_for(p);
+  if (p.n <= insertion_cap &&
       p.sortedness > thresholds_.sorted) {
     return Strategy::INSERTION_OPT;
   }
 
   Strategy best_cpu =
       cm.best_cpu_strategy(p, thresholds_.sorted, thresholds_.run_merge,
-                          thresholds_.dup, thresholds_.max_insertion_n);
+                          thresholds_.dup, insertion_cap);
+
+  if (best_cpu == Strategy::THREE_WAY_QS) {
+    const double intro_ms = cm.estimate_cpu(p, Strategy::INTROSORT);
+    const double three_ms = cm.estimate_cpu(p, Strategy::THREE_WAY_QS);
+    const bool dup_extreme = p.duplicate_ratio >= 0.995f;
+    const bool large_enough = p.n >= 100000;
+    const bool clear_win = three_ms < intro_ms * 0.95;
+    if (!(dup_extreme && large_enough && clear_win)) {
+      best_cpu = Strategy::INTROSORT;
+    }
+  }
 
   auto conservative_near_border = [&](Strategy s) -> Strategy {
     if (s == Strategy::INTROSORT || s == Strategy::INSERTION_OPT ||

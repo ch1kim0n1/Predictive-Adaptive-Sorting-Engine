@@ -25,6 +25,16 @@ Datasets from `bench/gen_datasets.h`:
 
 Override with `--sizes N1,N2,...`.
 
+## Reproducibility controls
+
+- Set dataset generation seed with `--seed N` (default `42`).
+- `bench_results` now emits metadata comment headers for run traceability:
+	- `# benchmark_utc=...`
+	- `# git_commit=...` (from `PASE_BENCH_GIT_COMMIT` env var)
+	- `# github_sha=...` (from `GITHUB_SHA` env var)
+	- `# os=...`, `# arch=...`, `# compiler=...`
+	- `# quick=...`, `# repeat=...`, `# seed=...`, `# sizes=...`
+
 ## Baselines
 
 Each cell records mean ± stdev ms for:
@@ -39,6 +49,17 @@ Derived columns: `speedup_vs_std`, `speedup_vs_stable`.
 
 - Optional first line: `# pase_bench_suite=1.2` (version marker).
 - Schema is stable within a major suite version; bump version if columns change.
+
+## Canonical baseline comparison
+
+Use `tune/compare_baseline.py` to compare candidate runs with a stored baseline:
+
+```bash
+python3 tune/compare_baseline.py visuals/bench_results_baseline.csv visuals/bench_results_after.csv
+```
+
+The script reports aggregate median/mean deltas, top regressions/improvements, and
+returns non-zero exit code when configured regression limits are violated.
 
 ## Acceptance (reference; tune in CI)
 
